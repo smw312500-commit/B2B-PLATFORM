@@ -1,0 +1,16 @@
+{
+  "name": "b2b-platform",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "concurrently -n \"EM,물류,플랫폼\" -c \"cyan,magenta,yellow\" \"node \\\"EM AI AGENT/server/index.js\\\"\" \"node 물류/server/index.js\" \"node agentcompany/server/index.js\""
+  },
+  "dependencies": {
+    "concurrently": "^9.0.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "mysql2": "^3.22.3",
+    "openai": "^6.38.0"
+  }
+}

@@ -1,0 +1,87 @@
+{
+  "version": "v2",
+  "working_schedule": {
+    "working_days": [
+      "monday",
+      "tuesday",
+      "wednesday",
+      "thursday",
+      "friday"
+    ],
+    "work_start": "08:30",
+    "work_end": "17:00",
+    "lunch_start": "12:00",
+    "lunch_end": "13:00",
+    "working_hours_per_day": 7.5
+  },
+  "material_capacity_per_roll": {
+    "fabric": 2300,
+    "chip": 50000,
+    "sticker_paper": 8000,
+    "converting_roll": 2300,
+    "sticker_converting_roll": 8000
+  },
+  "raw_material_usage_per_roll": {
+    "converting": {
+      "fabric": 1,
+      "chip": 2300
+    },
+    "sticker_converting": {
+      "sticker_paper": 1,
+      "chip": 8000
+    }
+  },
+  "process_rates": {
+    "first_process": {
+      "converting": {
+        "rolls_per_hour": 3,
+        "units_per_hour": 6900,
+        "machine_count": null
+      },
+      "sticker_converting": {
+        "rolls_per_hour": 2,
+        "units_per_hour": 16000,
+        "machine_count": null
+      }
+    },
+    "second_process": {
+      "care_label": {
+        "units_per_hour_per_machine": 2300,
+        "rolls_per_hour_per_machine": 1,
+        "machine_count": null
+      },
+      "sticker_label": {
+        "units_per_hour_per_machine": 8000,
+        "rolls_per_hour_per_machine": 1,
+        "machine_count": null
+      }
+    },
+    "cutting": {
+      "applies_to": [
+        "care_label"
+      ],
+      "enabled_by_order_flag": "requires_cutting",
+      "units_per_hour": 4600,
+      "rolls_per_hour": 2
+    }
+  },
+  "priority_rules": {
+    "manual_priority_range": [
+      1,
+      5
+    ],
+    "lower_number_is_higher_priority": true,
+    "fallback_order_when_priority_missing": "latest_order_first"
+  },
+  "status_rules": {
+    "current_calculation_statuses": [
+      "in_progress"
+    ],
+    "reserve_calculation_statuses": [
+      "received"
+    ],
+    "customer_cancel_allowed_statuses": [
+      "ordered"
+    ]
+  }
+}

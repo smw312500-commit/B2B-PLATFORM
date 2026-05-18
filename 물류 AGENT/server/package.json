@@ -1,0 +1,12 @@
+{
+  "name": "logistics-server",
+  "type": "module",
+  "dependencies": {
+    "better-sqlite3": "^9.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "drizzle-orm": "^0.30.10",
+    "express": "^4.18.3",
+    "openai": "^4.47.1"
+  }
+}

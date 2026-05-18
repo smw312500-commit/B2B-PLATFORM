@@ -1,0 +1,12 @@
+*.png
+PPT 자료들/
+node_modules
+server/node_modules
+dist
+.env
+server/.env
+*.txt
+__pycache__/
+*.pyc
+person_detection_flask/.venv/
+.claude/

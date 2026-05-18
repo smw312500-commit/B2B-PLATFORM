@@ -1,0 +1,4 @@
+@import "tailwindcss";
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0a0a0f; color: #e2e8f0; font-family: 'Pretendard', 'Noto Sans KR', sans-serif; }

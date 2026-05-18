@@ -1,0 +1,95 @@
+{
+  "version": "v2",
+  "raw_materials": {
+    "fabric": {
+      "label_ko": "원단",
+      "unit": "roll"
+    },
+    "chip": {
+      "label_ko": "칩",
+      "unit": "ea"
+    },
+    "sticker_paper": {
+      "label_ko": "스티커지",
+      "unit": "roll"
+    }
+  },
+  "first_process": {
+    "converting": {
+      "label_ko": "컨버팅",
+      "input_materials": [
+        "fabric",
+        "chip"
+      ],
+      "output_material": "converting_roll"
+    },
+    "sticker_converting": {
+      "label_ko": "스티커 컨버팅",
+      "input_materials": [
+        "sticker_paper",
+        "chip"
+      ],
+      "output_material": "sticker_converting_roll"
+    }
+  },
+  "intermediate_materials": {
+    "converting_roll": {
+      "label_ko": "컨버팅 롤",
+      "unit": "roll"
+    },
+    "sticker_converting_roll": {
+      "label_ko": "스티커 컨버팅 롤",
+      "unit": "roll"
+    }
+  },
+  "second_process": {
+    "care_label": {
+      "label_ko": "케어라벨",
+      "required_intermediate_material": "converting_roll",
+      "admin_options": {
+        "requires_cutting": {
+          "label_ko": "컷팅 Y/N",
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "sticker_label": {
+      "label_ko": "스티커라벨",
+      "required_intermediate_material": "sticker_converting_roll"
+    }
+  },
+  "cutting": {
+    "label_ko": "컷팅작업",
+    "applies_to": [
+      "care_label"
+    ],
+    "admin_controlled": true
+  },
+  "statuses": {
+    "ordered": {
+      "label_ko": "발주",
+      "group": "pre_production"
+    },
+    "received": {
+      "label_ko": "접수",
+      "group": "planned"
+    },
+    "in_progress": {
+      "label_ko": "작업중",
+      "group": "current"
+    },
+    "waiting_to_ship": {
+      "label_ko": "발송대기",
+      "group": "finished_waiting"
+    },
+    "done": {
+      "label_ko": "완료",
+      "group": "closed"
+    },
+    "cancelled": {
+      "label_ko": "작업취소",
+      "group": "closed"
+    }
+  }
+}
