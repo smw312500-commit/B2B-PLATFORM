@@ -31,39 +31,11 @@ MySQL 8.0
 └── logistics_agent  ← 물류기업 (차량, 배차, 운송)
 ```
 
-## 빠른 시작 (Docker)
+## 시작하기
 
-MySQL을 별도 설치하지 않고 바로 실행하려면:
+### 1. 환경변수 설정
 
-```bash
-# 1. MySQL 실행
-docker compose up -d
-
-# 2. 패키지 설치
-npm install
-
-# 3. DB 초기화 (MySQL 실행 후)
-mysql -u root -p < init/01_create_databases.sql
-mysql -u root -p < init/02_em_schema.sql
-mysql -u root -p < init/03_em_seed.sql
-mysql -u root -p < init/04_logistics_schema.sql
-mysql -u root -p < init/05_logistics_seed.sql
-mysql -u root -p < init/06_platform_schema.sql
-mysql -u root -p < init/07_platform_seed.sql
-mysql -u root -p < init/08_em_material_specs.sql
-mysql -u root -p < init/09_em_bl_imports.sql
-
-# 4. 서버 실행 (3개 동시)
-npm start
-```
-
-## MySQL 직접 설치
-
-[MySQL 8.0 공식 다운로드](https://dev.mysql.com/downloads/mysql/) 설치 후 위 3~4번 동일하게 진행.
-
-## 환경변수 설정
-
-각 서버 폴더의 `.env.example`을 복사해 `.env`로 만들고 값을 채웁니다.
+각 서버의 `.env.example`을 복사해 `.env`로 만듭니다.
 
 ```bash
 cp "생산 AGENT/server/.env.example" "생산 AGENT/server/.env"
@@ -71,18 +43,32 @@ cp "물류 AGENT/server/.env.example" "물류 AGENT/server/.env"
 cp "플랫폼 AGENT/server/.env.example" "플랫폼 AGENT/server/.env"
 ```
 
-```env
-# .env 공통 항목
-MYSQL_HOST=localhost
-MYSQL_PORT=3306
-MYSQL_USER=root
-MYSQL_PASSWORD=비밀번호입력
+각 `.env`에 OpenAI API 키를 입력합니다. MySQL 접속 정보는 기본값 그대로 사용 가능합니다.
 
-# 생산/플랫폼 서버 추가 항목
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4o-mini
-VITE_GEMINI_API_KEY=AI...
+### 2. MySQL 실행 (Docker)
+
+```bash
+docker compose up -d
 ```
+
+`init/` 폴더의 SQL 파일이 **자동으로 순서대로 실행**됩니다. DB 생성, 테이블, 시드 데이터까지 한 번에 구성됩니다.
+
+> Docker가 없으면 [MySQL 8.0](https://dev.mysql.com/downloads/mysql/) 설치 후 `.env`의 `MYSQL_PASSWORD`를 본인 비밀번호로 변경하고 `init/` SQL 파일을 순서대로 직접 실행하세요.
+
+### 3. 패키지 설치 및 서버 실행
+
+```bash
+npm install
+npm start
+```
+
+3개 서버가 동시에 실행됩니다.
+
+| 서비스 | 주소 |
+|--------|------|
+| 생산 AGENT | http://localhost:5173 |
+| 물류 AGENT | http://localhost:5174 |
+| 플랫폼 AGENT | http://localhost:5175 |
 
 ## DB 초기화 파일 설명
 
