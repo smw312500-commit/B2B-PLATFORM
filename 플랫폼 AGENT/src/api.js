@@ -22,4 +22,5 @@ export const agentApi = {
 
 export const notifyApi = {
   completions: () => req("/api/notify/completions"),
+  returnPlan:  () => req("/api/notify/return-plan"),
 };

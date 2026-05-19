@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useMemo } from "react";
 import {
-  Truck, Package, ClipboardList, LayoutDashboard,
+  Truck, Package, CalendarDays, LayoutDashboard,
   Sparkles, Loader2, CheckCircle2, Clock, AlertCircle,
-  Wrench, Send, MessageSquare, RefreshCw, Plus
+  Wrench, Send, MessageSquare, RefreshCw, Plus, ArrowRight
 } from "lucide-react";
 import { vehiclesApi, dispatchRequestsApi, dispatchesApi, chatApi } from "./api";
 
@@ -13,7 +13,7 @@ const DEMO_MODE = !apiKey.trim();
 // ── 상수 ────────────────────────────────────────────────────
 const VEHICLE_TYPE_LABELS = { "1TON":"1톤", "5TON":"5톤", "11TON":"11톤", "25TON":"25톤" };
 const VEHICLE_STATUS_LABELS  = { AVAILABLE:"가용", ON_DUTY:"운행 중", MAINTENANCE:"정비 중" };
-const DISPATCH_STATUS_LABELS = { ASSIGNED:"배차 완료", IN_TRANSIT:"운송 중", DELIVERED:"배달 완료", CANCELLED:"취소" };
+const DISPATCH_STATUS_LABELS = { ASSIGNED:"배차 예정", IN_TRANSIT:"운송 중", DELIVERED:"배달 완료", CANCELLED:"취소" };
 const REQUEST_STATUS_LABELS  = { PENDING:"대기", ASSIGNED:"배차됨", COMPLETED:"완료", CANCELLED:"취소" };
 const REQUEST_TYPE_LABELS    = { PRODUCTION:"생산출고", IMPORT:"수입입고" };
 
@@ -223,11 +223,10 @@ ${available.map(v => `id:${v.id} | ${v.plateNumber} | ${VEHICLE_TYPE_LABELS[v.ve
           <div className="mt-1 text-[10px] text-slate-500">Logistics Management</div>
         </div>
         {[
-          { key:"dashboard",  icon:<LayoutDashboard size={16}/>, label:"대시보드" },
-          { key:"requests",   icon:<ClipboardList size={16}/>,   label:`배차 요청 ${stats.pending > 0 ? `(${stats.pending})` : ""}` },
-          { key:"dispatches", icon:<Truck size={16}/>,           label:"배차 현황" },
-          { key:"vehicles",   icon:<Package size={16}/>,         label:"차량 관리" },
-          { key:"chat",       icon:<MessageSquare size={16}/>,   label:"AI 채팅" },
+          { key:"dashboard", icon:<LayoutDashboard size={16}/>, label:"대시보드" },
+          { key:"schedule",  icon:<CalendarDays size={16}/>,    label:`차량 스케줄 ${stats.pending > 0 ? `(대기 ${stats.pending})` : ""}` },
+          { key:"vehicles",  icon:<Package size={16}/>,         label:"차량 관리" },
+          { key:"chat",      icon:<MessageSquare size={16}/>,   label:"AI 채팅" },
         ].map(({ key, icon, label }) => (
           <button key={key} onClick={() => setMenu(key)}
             className={`mb-1 flex items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[12px] transition-colors ${
@@ -259,11 +258,11 @@ ${available.map(v => `id:${v.id} | ${v.plateNumber} | ${VEHICLE_TYPE_LABELS[v.ve
               <StatCard icon={<Package size={16}/>}      label="총 차량"     value={vehicles.length}   sub={`${stats.available}대 가용`}    color="text-slate-200"/>
             </div>
 
-            {/* 대기 중인 배차 요청 */}
+            {/* 배차 대기 요청 */}
             {stats.pending > 0 && (
-              <div className="rounded-2xl border border-orange-500/20 bg-orange-500/5 p-5">
+              <div className="mb-4 rounded-2xl border border-orange-500/20 bg-orange-500/5 p-5">
                 <div className="mb-4 flex items-center gap-2 text-orange-300">
-                  <AlertCircle size={16}/><span className="text-sm font-semibold">배차 대기 요청 {stats.pending}건</span>
+                  <AlertCircle size={16}/><span className="text-sm font-semibold">배차 대기 {stats.pending}건</span>
                 </div>
                 <div className="space-y-3">
                   {requests.filter(r => r.status === "PENDING").map(r => (
@@ -274,9 +273,6 @@ ${available.map(v => `id:${v.id} | ${v.plateNumber} | ${VEHICLE_TYPE_LABELS[v.ve
                           <span className="text-[12px] font-medium text-white">{r.cargoDesc}</span>
                         </div>
                         <div className="mt-1 text-[11px] text-slate-400">{r.pickupLocation} → {r.deliveryLocation} | {r.weightKg?.toLocaleString()}kg</div>
-                        {r.note?.startsWith("[귀로 추천]") && (
-                          <div className="mt-1.5 text-[10px] text-amber-400">⟳ {r.note}</div>
-                        )}
                       </div>
                       <button onClick={() => handleAutoDispatch(r.id)} disabled={aiLoading}
                         className="flex items-center gap-1.5 rounded-xl border border-blue-400/20 bg-blue-600 px-4 py-2 text-[11px] text-white hover:bg-blue-500 disabled:opacity-50">
@@ -288,95 +284,221 @@ ${available.map(v => `id:${v.id} | ${v.plateNumber} | ${VEHICLE_TYPE_LABELS[v.ve
                 </div>
               </div>
             )}
+
+            {/* 배차 예정 (미래 픽업) */}
+            {(() => {
+              const upcoming = dispatches.filter(d => {
+                if (d.status !== "ASSIGNED") return false;
+                if (!d.estimatedPickup) return false;
+                return new Date(d.estimatedPickup) > new Date();
+              });
+              if (!upcoming.length) return null;
+              return (
+                <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-5">
+                  <div className="mb-4 flex items-center gap-2 text-blue-300">
+                    <Clock size={16}/><span className="text-sm font-semibold">배차 예정 {upcoming.length}건</span>
+                  </div>
+                  <div className="space-y-3">
+                    {upcoming.map(d => {
+                      const req = requests.find(r => r.id === d.requestId);
+                      const veh = vehicles.find(v => v.id === d.vehicleId);
+                      return (
+                        <div key={d.id} className="rounded-xl border border-slate-700 bg-slate-800/60 px-4 py-3">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Badge label={REQUEST_TYPE_LABELS[req?.requestType] ?? req?.requestType ?? "-"}
+                              colorClass={req?.requestType === "IMPORT" ? "bg-violet-500/20 text-violet-300 border-violet-500/30" : "bg-cyan-500/20 text-cyan-300 border-cyan-500/30"} />
+                            <span className="text-[12px] font-medium text-white">{req?.cargoDesc ?? "-"}</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-x-4 text-[11px] text-slate-400">
+                            <span>차량 {veh?.plateNumber ?? "-"} ({veh?.baseRegion ?? "-"})</span>
+                            <span>기사 {veh?.driverName ?? "-"}</span>
+                            <span>픽업예정 {d.estimatedPickup?.slice(0,16).replace("T"," ")}</span>
+                            <span>도착예정 {d.estimatedDelivery?.slice(0,16).replace("T"," ")}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
 
-        {/* ── 배차 요청 ── */}
-        {menu === "requests" && (
-          <div>
-            <h1 className="mb-6 text-lg font-bold text-white">배차 요청</h1>
-            <div className="space-y-3">
-              {requests.map(r => (
-                <div key={r.id} className="rounded-2xl border border-slate-700/50 bg-slate-800/40 p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="mb-2 flex items-center gap-2">
-                        <Badge label={REQUEST_TYPE_LABELS[r.requestType] ?? r.requestType} colorClass={r.requestType === "IMPORT" ? "bg-violet-500/20 text-violet-300 border-violet-500/30" : "bg-cyan-500/20 text-cyan-300 border-cyan-500/30"} />
-                        <Badge label={REQUEST_STATUS_LABELS[r.status] ?? r.status} colorClass={REQUEST_STATUS_COLOR[r.status] ?? ""} />
-                        <span className="text-[12px] font-semibold text-white">{r.cargoDesc}</span>
+        {/* ── 차량 스케줄 관리 ── */}
+        {menu === "schedule" && (() => {
+          const pending = requests.filter(r => r.status === "PENDING");
+          const firstWords = str => str?.split(" ").slice(0, 2).join(" ") ?? "";
+
+          return (
+            <div>
+              <div className="mb-6 flex items-center justify-between">
+                <h1 className="text-lg font-bold text-white">차량 스케줄 관리</h1>
+                <button onClick={loadAll} className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-[10px] text-slate-300 hover:bg-slate-700">
+                  <RefreshCw size={12}/> 새로고침
+                </button>
+              </div>
+
+              {/* 미배정 요청 */}
+              {pending.length > 0 && (
+                <div className="mb-6 rounded-2xl border border-orange-500/20 bg-orange-500/5 p-4">
+                  <div className="mb-3 flex items-center gap-2 text-orange-300">
+                    <AlertCircle size={14}/>
+                    <span className="text-[12px] font-semibold">미배정 요청 {pending.length}건 — 차량 배정 필요</span>
+                  </div>
+                  <div className="space-y-2">
+                    {pending.map(r => (
+                      <div key={r.id} className="flex items-center gap-3 rounded-xl border border-slate-700 bg-slate-800/60 px-4 py-3">
+                        <Badge
+                          label={REQUEST_TYPE_LABELS[r.requestType] ?? r.requestType}
+                          colorClass={r.requestType === "IMPORT"
+                            ? "bg-violet-500/20 text-violet-300 border-violet-500/30"
+                            : "bg-cyan-500/20 text-cyan-300 border-cyan-500/30"}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[12px] font-medium text-white truncate">{r.cargoDesc}</div>
+                          <div className="flex items-center gap-1 text-[11px] text-slate-400">
+                            <span>{r.pickupLocation}</span>
+                            <ArrowRight size={10}/>
+                            <span>{r.deliveryLocation}</span>
+                            {r.weightKg && <span className="ml-2">{r.weightKg.toLocaleString()}kg</span>}
+                          </div>
+                          {r.note?.startsWith("[귀로 추천]") && (
+                            <div className="mt-1 text-[10px] text-amber-400">⟳ {r.note}</div>
+                          )}
+                        </div>
+                        <button onClick={() => handleAutoDispatch(r.id)} disabled={aiLoading}
+                          className="shrink-0 flex items-center gap-1.5 rounded-xl border border-blue-400/20 bg-blue-600 px-3 py-2 text-[11px] text-white hover:bg-blue-500 disabled:opacity-50">
+                          {aiLoading ? <Loader2 size={12} className="animate-spin"/> : <Sparkles size={12}/>} AI 배차
+                        </button>
                       </div>
-                      <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-[11px] text-slate-400">
-                        <span>출발 {r.pickupLocation}</span>
-                        <span>도착 {r.deliveryLocation}</span>
-                        {r.weightKg && <span>무게 {r.weightKg.toLocaleString()}kg</span>}
-                        {r.qty      && <span>수량 {r.qty.toLocaleString()}</span>}
-                        <span>요청 {r.requestedAt?.slice(0,16).replace("T"," ")}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 차량별 스케줄 */}
+              <div className="space-y-3">
+                {vehicles.map(v => {
+                  const vDispatches = dispatches
+                    .filter(d => d.vehicleId === v.id && ["ASSIGNED","IN_TRANSIT"].includes(d.status))
+                    .sort((a, b) => new Date(a.assignedAt) - new Date(b.assignedAt));
+
+                  // 귀로 기회: 현재 배차의 도착지 = 미배정 요청의 출발지
+                  const activeDispatch = vDispatches[0] ?? null;
+                  const activeReq = activeDispatch ? requests.find(r => r.id === activeDispatch.requestId) : null;
+                  const returnOpp = activeReq
+                    ? pending.find(r =>
+                        firstWords(activeReq.deliveryLocation) &&
+                        r.pickupLocation?.includes(firstWords(activeReq.deliveryLocation))
+                      )
+                    : null;
+
+                  return (
+                    <div key={v.id} className="rounded-2xl border border-slate-700/50 bg-slate-800/40 p-4">
+                      {/* 차량 헤더 */}
+                      <div className="mb-3 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <span className="font-semibold text-white">{v.plateNumber}</span>
+                          <span className="text-[11px] text-slate-400">
+                            {VEHICLE_TYPE_LABELS[v.vehicleType]} · {v.capacityKg.toLocaleString()}kg
+                          </span>
+                          <span className="text-[11px] text-slate-500">{v.driverName}</span>
+                          {v.baseRegion && (
+                            <span className="text-[10px] text-slate-600">거점 {v.baseRegion}</span>
+                          )}
+                        </div>
+                        <Badge label={VEHICLE_STATUS_LABELS[v.status] ?? v.status} colorClass={VEHICLE_STATUS_COLOR[v.status] ?? ""} />
                       </div>
-                      {r.note && r.note.startsWith("[귀로 추천]") && (
-                        <div className="mt-2 flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-[10px] text-amber-300">
-                          <span>⟳</span> {r.note}
+
+                      {vDispatches.length === 0 ? (
+                        <p className="text-[11px] text-slate-600">현재 스케줄 없음</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {vDispatches.map((d, idx) => {
+                            const req = requests.find(r => r.id === d.requestId);
+                            const isReturn = returnOpp && idx === 0;
+                            return (
+                              <div key={d.id}>
+                                <div className="rounded-xl border border-slate-700/60 bg-slate-900/50 p-3">
+                                  <div className="mb-2 flex items-center gap-2">
+                                    <Badge label={DISPATCH_STATUS_LABELS[d.status] ?? d.status} colorClass={DISPATCH_STATUS_COLOR[d.status] ?? ""} />
+                                    <Badge
+                                      label={REQUEST_TYPE_LABELS[req?.requestType] ?? req?.requestType ?? "-"}
+                                      colorClass={req?.requestType === "IMPORT"
+                                        ? "bg-violet-500/20 text-violet-300 border-violet-500/30"
+                                        : "bg-cyan-500/20 text-cyan-300 border-cyan-500/30"}
+                                    />
+                                    <span className="text-[12px] font-medium text-white truncate">{req?.cargoDesc ?? `요청 #${d.requestId}`}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                                    <span>{req?.pickupLocation ?? "-"}</span>
+                                    <ArrowRight size={10}/>
+                                    <span>{req?.deliveryLocation ?? "-"}</span>
+                                  </div>
+                                  {d.estimatedPickup && (
+                                    <div className="mt-1 text-[10px] text-slate-600">
+                                      픽업 {d.estimatedPickup.slice(0,16).replace("T"," ")} →
+                                      도착 {d.estimatedDelivery?.slice(0,16).replace("T"," ") ?? "미정"}
+                                    </div>
+                                  )}
+                                  <div className="mt-2 flex gap-2">
+                                    {d.status === "ASSIGNED" && (
+                                      <button onClick={async () => { await dispatchesApi.setStatus(d.id, "IN_TRANSIT"); loadAll(); }}
+                                        className="rounded-lg border border-blue-500/30 bg-blue-600/20 px-3 py-1.5 text-[10px] text-blue-300 hover:bg-blue-600/40">
+                                        출발 처리
+                                      </button>
+                                    )}
+                                    {d.status === "IN_TRANSIT" && (
+                                      <button onClick={async () => { await dispatchesApi.setStatus(d.id, "DELIVERED"); loadAll(); }}
+                                        className="rounded-lg border border-emerald-500/30 bg-emerald-600/20 px-3 py-1.5 text-[10px] text-emerald-300 hover:bg-emerald-600/40">
+                                        배달 완료
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* 귀로 연결 표시 */}
+                                {isReturn && returnOpp && (
+                                  <div className="ml-4 mt-1">
+                                    <div className="flex items-center gap-1 text-[10px] text-amber-500 mb-1">
+                                      <span>↓ 귀로 연결 가능</span>
+                                    </div>
+                                    <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3">
+                                      <div className="mb-2 flex items-center gap-2">
+                                        <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-400">귀로 추천</span>
+                                        <Badge
+                                          label={REQUEST_TYPE_LABELS[returnOpp.requestType] ?? returnOpp.requestType}
+                                          colorClass="bg-cyan-500/20 text-cyan-300 border-cyan-500/30"
+                                        />
+                                        <span className="text-[12px] font-medium text-white truncate">{returnOpp.cargoDesc}</span>
+                                      </div>
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                                          <span>{returnOpp.pickupLocation}</span>
+                                          <ArrowRight size={10}/>
+                                          <span>{returnOpp.deliveryLocation}</span>
+                                        </div>
+                                        <button onClick={() => handleAutoDispatch(returnOpp.id)} disabled={aiLoading}
+                                          className="ml-3 flex items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-600/20 px-3 py-1.5 text-[10px] text-amber-300 hover:bg-amber-600/30 disabled:opacity-50">
+                                          {aiLoading ? <Loader2 size={10} className="animate-spin"/> : <Sparkles size={10}/>} 귀로 배정
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
-                    {r.status === "PENDING" && (
-                      <button onClick={() => handleAutoDispatch(r.id)} disabled={aiLoading}
-                        className="ml-4 flex items-center gap-1.5 rounded-xl border border-blue-400/20 bg-blue-600 px-3 py-2 text-[11px] text-white hover:bg-blue-500 disabled:opacity-50">
-                        {aiLoading ? <Loader2 size={12} className="animate-spin"/> : <Sparkles size={12}/>} AI 배차
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-              {requests.length === 0 && <div className="py-12 text-center text-[12px] text-slate-500">배차 요청이 없습니다.</div>}
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        )}
-
-        {/* ── 배차 현황 ── */}
-        {menu === "dispatches" && (
-          <div>
-            <h1 className="mb-6 text-lg font-bold text-white">배차 현황</h1>
-            <div className="space-y-3">
-              {dispatches.map(d => {
-                const req = requests.find(r => r.id === d.requestId);
-                const veh = vehicles.find(v => v.id === d.vehicleId);
-                return (
-                  <div key={d.id} className="rounded-2xl border border-slate-700/50 bg-slate-800/40 p-4">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="mb-2 flex items-center gap-2">
-                          <Badge label={DISPATCH_STATUS_LABELS[d.status] ?? d.status} colorClass={DISPATCH_STATUS_COLOR[d.status] ?? ""} />
-                          <span className="text-[12px] font-semibold text-white">{req?.cargoDesc ?? `요청 #${d.requestId}`}</span>
-                        </div>
-                        <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-[11px] text-slate-400">
-                          <span>차량 {veh?.plateNumber ?? "-"} ({veh ? VEHICLE_TYPE_LABELS[veh.vehicleType] : "-"})</span>
-                          <span>기사 {veh?.driverName ?? "-"}</span>
-                          <span>배차 {d.assignedAt?.slice(0,16).replace("T"," ")}</span>
-                          {d.estimatedDelivery && <span>도착예정 {d.estimatedDelivery.slice(0,16).replace("T"," ")}</span>}
-                        </div>
-                      </div>
-                      <div className="ml-4 flex flex-col gap-1">
-                        {d.status === "ASSIGNED" && (
-                          <button onClick={async () => { await dispatchesApi.setStatus(d.id, "IN_TRANSIT"); loadAll(); }}
-                            className="rounded-lg border border-blue-500/30 bg-blue-600/20 px-3 py-1.5 text-[10px] text-blue-300 hover:bg-blue-600/40">
-                            출발 처리
-                          </button>
-                        )}
-                        {d.status === "IN_TRANSIT" && (
-                          <button onClick={async () => { await dispatchesApi.setStatus(d.id, "DELIVERED"); loadAll(); }}
-                            className="rounded-lg border border-emerald-500/30 bg-emerald-600/20 px-3 py-1.5 text-[10px] text-emerald-300 hover:bg-emerald-600/40">
-                            배달 완료
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-              {dispatches.length === 0 && <div className="py-12 text-center text-[12px] text-slate-500">배차 이력이 없습니다.</div>}
-            </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* ── 차량 관리 ── */}
         {menu === "vehicles" && (

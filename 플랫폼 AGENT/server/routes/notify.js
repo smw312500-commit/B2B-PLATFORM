@@ -84,4 +84,39 @@ router.get("/completions", async (req, res) => {
   res.json(rows);
 });
 
+// 귀로 플랜: 인바운드(수입 배송 중) + 아웃바운드(출고 대기) 연결 뷰
+router.get("/return-plan", async (req, res) => {
+  // 수입 배송 중인 차량 (부산→서울 방향)
+  const [inbound] = await pool.execute(
+    `SELECT d.id AS dispatchId, d.status AS dispatchStatus,
+            r.id AS requestId, r.cargo_desc AS cargoDesc,
+            r.pickup_location AS pickupLocation, r.delivery_location AS deliveryLocation,
+            r.qty, r.weight_kg AS weightKg,
+            v.plate_number AS plateNumber, v.driver_name AS driverName,
+            v.vehicle_type AS vehicleType, v.base_region AS baseRegion,
+            d.estimated_pickup AS estimatedPickup, d.estimated_delivery AS estimatedDelivery
+     FROM logistics_agent.dispatches d
+     JOIN logistics_agent.dispatch_requests r ON r.id = d.request_id
+     JOIN logistics_agent.vehicles v ON v.id = d.vehicle_id
+     WHERE r.request_type = 'IMPORT'
+       AND d.status IN ('ASSIGNED','IN_TRANSIT')
+     ORDER BY d.assigned_at DESC
+     LIMIT 10`
+  );
+
+  // 출고 대기 중인 생산 요청 (귀로 후보)
+  const [outbound] = await pool.execute(
+    `SELECT r.id AS requestId, r.cargo_desc AS cargoDesc,
+            r.pickup_location AS pickupLocation, r.delivery_location AS deliveryLocation,
+            r.qty, r.requested_at AS requestedAt, r.note, r.em_order_id AS emOrderId,
+            c.customer_name AS customerName, c.product_type AS productType
+     FROM logistics_agent.dispatch_requests r
+     LEFT JOIN platform_agent.production_completions c ON c.order_id = r.em_order_id
+     WHERE r.request_type = 'PRODUCTION' AND r.status = 'PENDING'
+     ORDER BY r.requested_at DESC`
+  );
+
+  res.json({ inbound, outbound });
+});
+
 export default router;

@@ -56,6 +56,7 @@ export default function App() {
   const [companies, setComp]          = useState([]);
   const [logs, setLogs]               = useState([]);
   const [completions, setCompletions] = useState([]);
+  const [returnPlan, setReturnPlan]   = useState({ inbound: [], outbound: [] });
   const [loading, setLoading]         = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
 
@@ -67,12 +68,13 @@ export default function App() {
 
   const loadAll = useCallback(async () => {
     try {
-      const [e, l, c, lg, cp] = await Promise.all([
+      const [e, l, c, lg, cp, rp] = await Promise.all([
         monitorApi.em(), monitorApi.logistics(),
         monitorApi.companies(), monitorApi.logs(),
-        notifyApi.completions(),
+        notifyApi.completions(), notifyApi.returnPlan(),
       ]);
-      setEm(e); setLog(l); setComp(c); setLogs(lg); setCompletions(cp);
+      setEm(e); setLog(l); setComp(c); setLogs(lg);
+      setCompletions(cp); setReturnPlan(rp);
       setLastUpdated(new Date().toLocaleTimeString("ko-KR"));
     } catch { /* 서버 미실행 시 무시 */ }
     finally { setLoading(false); }
@@ -254,64 +256,91 @@ export default function App() {
         )}
       </div>
 
-      {/* ── 생산 완료 알림 (귀로 플랜) ── */}
-      <div className="mb-6 rounded-2xl border border-slate-700/40 bg-slate-900/40 p-5">
-        <div className="mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-cyan-400">
-            <ArrowRight size={16} />
-            <span className="text-[13px] font-semibold">생산 완료 알림 — 귀로 플랜</span>
-            <span className="rounded-full border border-slate-700 bg-slate-800 px-2 py-0.5 text-[9px] text-slate-400">
-              {completions.length}건
-            </span>
-          </div>
-          <span className="text-[10px] text-slate-600">생산기업 READY_TO_SHIP → 플랫폼 수신 → 물류 배차 요청 자동 생성</span>
+      {/* ── 귀로 플랜 ── */}
+      <div className="mb-6 rounded-2xl border border-amber-500/20 bg-amber-950/10 p-5">
+        <div className="mb-4 flex items-center gap-2">
+          <ArrowRight size={16} className="text-amber-400" />
+          <span className="text-[13px] font-semibold text-amber-300">귀로 플랜</span>
+          <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[9px] text-amber-400">
+            인바운드 {returnPlan.inbound.length}건 · 아웃바운드 {returnPlan.outbound.length}건
+          </span>
         </div>
 
-        {completions.length === 0 ? (
-          <div className="py-4 text-center text-[11px] text-slate-600">
-            생산기업에서 출고 준비 완료 알림이 오면 여기에 표시됩니다.
-          </div>
+        {returnPlan.inbound.length === 0 && returnPlan.outbound.length === 0 ? (
+          <p className="py-3 text-center text-[11px] text-slate-600">
+            수입 배송 중인 차량이 없거나 출고 대기 수주가 없습니다.
+          </p>
         ) : (
-          <div className="space-y-2">
-            {completions.map(c => {
-              const isPending    = c.status === "PENDING";
-              const isDispatched = c.status === "DISPATCHED";
-              return (
-                <div key={c.id}
-                  className={`flex items-center gap-4 rounded-xl border px-4 py-3 text-[11px] ${
-                    isPending
-                      ? "border-orange-500/20 bg-orange-500/5"
-                      : "border-emerald-500/20 bg-emerald-500/5"
-                  }`}>
-                  {/* 기업명 */}
-                  <span className="shrink-0 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2 py-0.5 text-[10px] text-cyan-400">
-                    {c.company_name}
-                  </span>
-                  {/* 수주 정보 */}
-                  <div className="flex-1">
-                    <span className="font-medium text-white">{c.order_number}</span>
-                    <span className="ml-2 text-slate-400">{c.product_type === "CARE_LABEL" ? "케어라벨" : "스티커라벨"}</span>
-                    <span className="ml-2 text-slate-400">{Number(c.quantity).toLocaleString()}개</span>
+          <div className="grid grid-cols-2 gap-4">
+
+            {/* 인바운드 */}
+            <div>
+              <div className="mb-2 text-[10px] text-slate-500 tracking-widest">
+                수입 배송 중 — 공장 도착 후 귀로 가능
+              </div>
+              <div className="space-y-2">
+                {returnPlan.inbound.length === 0 ? (
+                  <p className="text-[11px] text-slate-600">없음</p>
+                ) : returnPlan.inbound.map(d => (
+                  <div key={d.dispatchId} className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-3">
+                    <div className="mb-1 flex items-center gap-2">
+                      <span className={`rounded-full border px-2 py-0.5 text-[10px] ${
+                        d.dispatchStatus === "IN_TRANSIT"
+                          ? "border-blue-500/30 text-blue-400"
+                          : "border-yellow-500/30 text-yellow-400"
+                      }`}>
+                        {d.dispatchStatus === "IN_TRANSIT" ? "운송 중" : "배차됨"}
+                      </span>
+                      <span className="text-[11px] font-medium text-white">{d.cargoDesc}</span>
+                    </div>
+                    <div className="flex items-center gap-1 text-[11px] text-slate-400">
+                      <span>{d.pickupLocation}</span>
+                      <ArrowRight size={9} />
+                      <span className="text-slate-300">공장 도착</span>
+                    </div>
+                    <div className="mt-1 text-[10px] text-slate-600">
+                      {d.plateNumber} · {d.driverName}
+                      {d.weightKg && ` · ${Number(d.weightKg).toLocaleString()}kg`}
+                    </div>
                   </div>
-                  {/* 루트 */}
-                  <div className="flex items-center gap-1 text-slate-500">
-                    <span>{c.pickup_address ?? "공장"}</span>
-                    <ArrowRight size={10} />
-                    <span>{c.delivery_address ?? `${c.customer_name} 납품처`}</span>
+                ))}
+              </div>
+            </div>
+
+            {/* 아웃바운드 */}
+            <div>
+              <div className="mb-2 text-[10px] text-slate-500 tracking-widest">
+                출고 대기 — 귀로 배차 필요
+              </div>
+              <div className="space-y-2">
+                {returnPlan.outbound.length === 0 ? (
+                  <p className="text-[11px] text-slate-600">없음</p>
+                ) : returnPlan.outbound.map(r => (
+                  <div key={r.requestId} className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-3">
+                    <div className="mb-1 flex items-center gap-2">
+                      <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-2 py-0.5 text-[10px] text-orange-400">
+                        배차 대기
+                      </span>
+                      <span className="text-[11px] font-medium text-white">{r.cargoDesc}</span>
+                    </div>
+                    <div className="flex items-center gap-1 text-[11px] text-slate-400">
+                      <span>{r.pickupLocation}</span>
+                      <ArrowRight size={9} />
+                      <span>{r.deliveryLocation}</span>
+                    </div>
+                    {r.qty && (
+                      <div className="mt-1 text-[10px] text-slate-600">
+                        {r.productType === "CARE_LABEL" ? "케어라벨" : r.productType} · {Number(r.qty).toLocaleString()}개
+                      </div>
+                    )}
+                    {r.note?.startsWith("[귀로 추천]") && (
+                      <div className="mt-1 text-[10px] text-amber-400">⟳ {r.note}</div>
+                    )}
                   </div>
-                  {/* 상태 */}
-                  <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] ${
-                    isPending
-                      ? "border-orange-500/30 text-orange-400"
-                      : "border-emerald-500/30 text-emerald-400"
-                  }`}>
-                    {isPending ? "배차 대기" : "배차됨"}
-                  </span>
-                  {/* 시각 */}
-                  <span className="shrink-0 text-slate-600">{String(c.notified_at).slice(5, 16)}</span>
-                </div>
-              );
-            })}
+                ))}
+              </div>
+            </div>
+
           </div>
         )}
       </div>
