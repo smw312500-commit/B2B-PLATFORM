@@ -88,16 +88,17 @@ async function executeTool(name, args) {
 
   if (name === "create_logistics_dispatch") {
     const { order_id, cargo_desc, qty, weight_kg, pickup_location, delivery_location, reason } = args;
+    // em_order_id 기준 중복 체크 (있으면 skip)
     const [exists] = await pool.execute(
-      "SELECT id FROM logistics_agent.dispatch_requests WHERE cargo_desc=? AND status='PENDING' AND pickup_location=?",
-      [cargo_desc, pickup_location]
+      "SELECT id FROM logistics_agent.dispatch_requests WHERE em_order_id = ?",
+      [order_id]
     );
-    if (exists.length > 0) return { ok: false, message: "이미 동일한 배차 요청 존재" };
+    if (exists.length > 0) return { ok: false, message: "이미 동일한 배차 요청 존재 (em_order_id 중복)" };
     await pool.execute(
       `INSERT INTO logistics_agent.dispatch_requests
-         (request_type, cargo_desc, qty, weight_kg, pickup_location, delivery_location, status, requested_at)
-       VALUES ('PRODUCTION',?,?,?,?,?,'PENDING',?)`,
-      [cargo_desc, qty ?? null, weight_kg ?? null, pickup_location, delivery_location, ts]
+         (request_type, cargo_desc, qty, weight_kg, pickup_location, delivery_location, status, requested_at, em_order_id)
+       VALUES ('PRODUCTION',?,?,?,?,?,'PENDING',?,?)`,
+      [cargo_desc, qty ?? null, weight_kg ?? null, pickup_location, delivery_location, ts, order_id]
     );
     await logAction("DISPATCH_AUTO_CREATED", `[${order_id}] ${cargo_desc} 배차 요청 자동 생성 — ${reason}`);
     return { ok: true, message: `배차 요청 생성: ${cargo_desc}` };

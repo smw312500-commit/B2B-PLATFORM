@@ -276,7 +276,7 @@ export default function App() {
             {/* 인바운드 */}
             <div>
               <div className="mb-2 text-[10px] text-slate-500 tracking-widest">
-                수입 배송 중 — 공장 도착 후 귀로 가능
+                수입 배송 현황 — 도착 후 귀로 연결
               </div>
               <div className="space-y-2">
                 {returnPlan.inbound.length === 0 ? (
@@ -287,18 +287,29 @@ export default function App() {
                       <span className={`rounded-full border px-2 py-0.5 text-[10px] ${
                         d.dispatchStatus === "IN_TRANSIT"
                           ? "border-blue-500/30 text-blue-400"
-                          : "border-yellow-500/30 text-yellow-400"
+                          : "border-slate-600/50 text-slate-400"
                       }`}>
-                        {d.dispatchStatus === "IN_TRANSIT" ? "운송 중" : "배차됨"}
+                        {d.dispatchStatus === "IN_TRANSIT" ? "운송 중" : "물류 대기"}
                       </span>
                       <span className="text-[11px] font-medium text-white">{d.cargoDesc}</span>
                     </div>
                     <div className="flex items-center gap-1 text-[11px] text-slate-400">
                       <span>{d.pickupLocation}</span>
                       <ArrowRight size={9} />
-                      <span className="text-slate-300">공장 도착</span>
+                      <span className={d.dispatchStatus === "IN_TRANSIT" ? "text-amber-400" : "text-slate-500"}>
+                        {d.dispatchStatus === "IN_TRANSIT" ? "공장 도착 예정" : "출발 대기 중"}
+                      </span>
                     </div>
-                    <div className="mt-1 text-[10px] text-slate-600">
+                    <div className="mt-1.5 flex items-center gap-2 text-[10px] text-slate-500">
+                      {d.estimatedPickup && (
+                        <span>픽업 {String(d.estimatedPickup).slice(5, 16).replace("T", " ")}</span>
+                      )}
+                      {d.estimatedDelivery && (
+                        <><span className="text-slate-700">→</span>
+                        <span>도착 {String(d.estimatedDelivery).slice(5, 16).replace("T", " ")}</span></>
+                      )}
+                    </div>
+                    <div className="mt-0.5 text-[10px] text-slate-600">
                       {d.plateNumber} · {d.driverName}
                       {d.weightKg && ` · ${Number(d.weightKg).toLocaleString()}kg`}
                     </div>

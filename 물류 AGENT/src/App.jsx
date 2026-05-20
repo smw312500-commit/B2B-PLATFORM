@@ -171,8 +171,21 @@ ${available.map(v => `id:${v.id} | ${v.plateNumber} | ${VEHICLE_TYPE_LABELS[v.ve
       const pickup   = toMysql(new Date(today.getTime() + 2 * 3600000));
       const delivery = toMysql(new Date(today.getTime() + 8 * 3600000));
 
-      await dispatchesApi.assign({ requestId: reqId, vehicleId, estimatedPickup: pickup, estimatedDelivery: delivery, note: "AI 자동 배차" });
-      await loadAll();
+      const { id: newDispatchId } = await dispatchesApi.assign({
+        requestId: reqId, vehicleId,
+        estimatedPickup: pickup, estimatedDelivery: delivery,
+        note: "AI 자동 배차",
+      });
+
+      // useEffect 재호출 없이 이벤트 핸들러 내에서 직접 상태 갱신
+      setRequests(prev => prev.map(r => r.id === reqId ? { ...r, status: "ASSIGNED" } : r));
+      setVehicles(prev => prev.map(v => v.id === vehicleId ? { ...v, status: "ON_DUTY" } : v));
+      setDispatches(prev => [...prev, {
+        id: newDispatchId, requestId: reqId, vehicleId,
+        status: "ASSIGNED", assignedAt: pickup,
+        estimatedPickup: pickup, estimatedDelivery: delivery,
+        note: "AI 자동 배차", createdAt: pickup,
+      }]);
     } catch (e) {
       alert(`배차 실패: ${e.message}`);
     } finally {

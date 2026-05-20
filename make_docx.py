@@ -155,6 +155,7 @@ toc_items = [
     ('4.', 'AI Agent 기능'),
     ('5.', '기술 스택'),
     ('6.', '주요 화면'),
+    ('7.', '아키텍처 개선 이력 — 문제 인식 및 해결 과정'),
 ]
 for num, title in toc_items:
     p = doc.add_paragraph()
@@ -378,6 +379,101 @@ body('GitHub: https://github.com/smw312500-commit/B2B-PLATFORM')
 bullet('생산 AGENT — 수주 목록, 생산 공정, 재고 현황, B/L 업로드')
 bullet('물류 AGENT — 배차 대기 목록, AI 자동 배차, 차량 관리')
 bullet('플랫폼 AGENT — 양사 통합 모니터링 대시보드')
+
+# ════════════════════════════════════════════════════
+# 7. 아키텍처 개선 이력
+# ════════════════════════════════════════════════════
+heading1('7. 아키텍처 개선 이력 — 문제 인식 및 해결 과정')
+
+body('개발 과정에서 발견한 설계 문제점을 인지하고 현업 기준으로 리팩토링한 이력을 기록한다.')
+
+# ── 7.1
+heading2('7.1 시스템 간 강한 결합도(Tight Coupling) 해소')
+
+heading3('문제')
+bullet('초기 설계에서 생산 에이전트(blImports.js, orders.js)가 물류 에이전트의 DB(logistics_agent)에 직접 커넥션을 생성하여 INSERT를 실행하는 구조였다.')
+bullet('동일한 MySQL 인스턴스 내에 있어 동작은 했지만, 두 시스템이 물리적으로 분리되면 해당 코드 전체가 동작 불가한 구조적 결함이 존재했다.')
+code_block('''// 문제 코드 (blImports.js)
+const logisticsPool = mysql.createPool({ database: "logistics_agent" })
+await logisticsPool.execute("INSERT INTO dispatch_requests ...")
+// → 생산 서버가 물류 DB에 직접 접근: 도메인 침범''')
+
+heading3('해결')
+bullet('플랫폼 AGENT를 중계 브로커(HTTP Webhook)로 두는 방식으로 리팩토링했다.')
+bullet('생산 에이전트는 물류 DB를 전혀 모르고, 플랫폼 API만 호출한다.')
+bullet('플랫폼이 요청을 받아 물류 DB에 적재하며, 각 에이전트 간 도메인 의존성이 완전히 분리되었다.')
+code_block('''// 개선 코드 (blImports.js)
+fetch(`${PLATFORM_URL}/api/notify/dispatch-request`, {
+  method: "POST",
+  body: JSON.stringify({ requestType, cargoDesc, qty, ... })
+})
+// → 플랫폼이 물류 DB에 대신 INSERT (HTTP Webhook 방식)
+
+// 플랫폼 notify.js — 중계 엔드포인트
+POST /api/notify/dispatch-request  // B/L 수입 배차 요청
+POST /api/notify/ready             // 생산 완료 출고 알림
+POST /api/notify/sync-destination  // 도착지 변경 동기화''')
+
+add_table(
+    ['구분', '변경 전', '변경 후'],
+    [
+        ['연동 방식', '생산 서버 → 물류 DB 직접 INSERT', '생산 서버 → 플랫폼 API → 물류 DB'],
+        ['물리 분리 시', '코드 전체 동작 불가', '플랫폼 URL만 변경하면 동작'],
+        ['도메인 의존성', '생산이 물류 DB 구조를 알아야 함', '생산은 플랫폼 인터페이스만 알면 됨'],
+        ['다중 생산기업', '각 기업에 물류 DB 접근 권한 부여 필요', '플랫폼 API 엔드포인트 하나로 통일'],
+    ],
+    col_widths=[3, 6, 6]
+)
+
+# ── 7.2
+heading2('7.2 귀로 최적화 매칭 알고리즘 실제 구현')
+
+heading3('문제')
+bullet('초기 귀로 매칭 로직은 Platform Agent의 GPT 프롬프트에 "귀로 방향 매칭하라"는 지시만 있었고, 실제 알고리즘이 없었다.')
+bullet('AI 판단에만 의존하여 매칭 기준이 불명확하고, 재현 가능한 비즈니스 로직이 부재했다.')
+
+heading3('해결')
+bullet('GET /api/monitor/backhaul-matching 전용 엔드포인트를 구현했다.')
+bullet('배달 완료 차량의 현재 위치에서 지역명을 추출하고, PENDING 배차 요청의 픽업 위치와 공간 매칭한다.')
+bullet('적재 가능 중량(capacity_kg >= weight_kg) 검증을 포함하여 실제 배차 가능 여부까지 필터링한다.')
+code_block('''// GET /api/monitor/backhaul-matching
+// 1단계: 배달 완료 후 AVAILABLE 차량 조회 (최근 12시간)
+SELECT v.*, r.delivery_location AS currentLocation
+FROM dispatches d
+JOIN vehicles v ON v.id = d.vehicle_id
+JOIN dispatch_requests r ON r.id = d.request_id
+WHERE d.status = 'DELIVERED' AND v.status = 'AVAILABLE'
+  AND d.actual_delivered_at >= DATE_SUB(NOW(), INTERVAL 12 HOUR)
+
+// 2단계: PENDING 배차 요청과 지역 매칭
+const extractRegion = (str) => str.match(/^(서울|부산|인천|...)/)?.[1]
+matched = vehicles.filter(v =>
+  extractRegion(v.currentLocation) === extractRegion(r.pickupLocation)
+  && v.capacityKg >= (r.weightKg ?? 0)
+)''')
+
+bullet('플랫폼만이 양사 데이터를 동시에 보유하는 구조적 특성을 활용한 알고리즘으로, 각 기업 단독으로는 불가능한 귀로 최적화를 구현했다.')
+
+# ── 7.3
+heading2('7.3 React 상태 관리 최적화 (useEffect 오남용 제거)')
+
+heading3('문제')
+bullet('배차 완료 후 loadAll()을 호출하여 전체 데이터를 서버에서 재fetch하는 방식을 사용했다.')
+bullet('사용자의 버튼 클릭(명시적 이벤트) 이후에도 useEffect를 통해 갱신 타이밍을 맞추는 구조로 인해 불필요한 네트워크 요청이 발생했다.')
+code_block('''// 문제 코드
+await dispatchesApi.assign({ ... })
+await loadAll()  // 전체 재fetch → 불필요한 네트워크 비용''')
+
+heading3('해결')
+bullet('이벤트 핸들러 내에서 setRequests, setVehicles, setDispatches를 직접 호출하는 낙관적 업데이트(Optimistic Update) 방식으로 전환했다.')
+bullet('명시적 유저 액션은 이벤트 핸들러에서 상태를 직접 제어하도록 구조를 단순화하여, 렌더링 오버헤드를 줄이고 상태 변경의 예측 가능성을 높였다.')
+code_block('''// 개선 코드
+const { id: newDispatchId } = await dispatchesApi.assign({ ... })
+
+// 서버 재호출 없이 핸들러 내에서 직접 상태 갱신
+setRequests(prev => prev.map(r => r.id === reqId ? {...r, status:"ASSIGNED"} : r))
+setVehicles(prev => prev.map(v => v.id === vehicleId ? {...v, status:"ON_DUTY"} : v))
+setDispatches(prev => [...prev, { id: newDispatchId, status:"ASSIGNED", ... }])''')
 
 # ── 저장 ──────────────────────────────────────────────────────
 output_path = r'e:\PROJECT\B2B Platform\B2B_AI_Agent_Platform_포트폴리오.docx'

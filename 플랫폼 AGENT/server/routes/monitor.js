@@ -33,4 +33,87 @@ router.get("/logs", async (req, res) => {
   res.json(rows);
 });
 
+// 귀로 최적화 매칭 알고리즘
+// 배달 완료 후 복귀 중인 차량과 대기 중인 화물의 이동 경로를 공간 매칭
+router.get("/backhaul-matching", async (req, res) => {
+  // 최근 12시간 이내 배달 완료 + 현재 AVAILABLE 차량
+  const [deliveredVehicles] = await pool.execute(`
+    SELECT
+      v.id            AS vehicleId,
+      v.plate_number  AS plateNumber,
+      v.vehicle_type  AS vehicleType,
+      v.capacity_kg   AS capacityKg,
+      v.driver_name   AS driverName,
+      v.base_region   AS baseRegion,
+      r.pickup_location   AS fromLocation,
+      r.delivery_location AS currentLocation,
+      d.actual_delivered_at AS deliveredAt
+    FROM logistics_agent.dispatches d
+    JOIN logistics_agent.vehicles v ON v.id = d.vehicle_id
+    JOIN logistics_agent.dispatch_requests r ON r.id = d.request_id
+    WHERE d.status = 'DELIVERED'
+      AND v.status = 'AVAILABLE'
+      AND d.actual_delivered_at >= DATE_SUB(NOW(), INTERVAL 12 HOUR)
+    ORDER BY d.actual_delivered_at DESC
+  `);
+
+  // PENDING 배차 요청 (귀로 후보)
+  const [pendingRequests] = await pool.execute(`
+    SELECT
+      r.id              AS requestId,
+      r.request_type    AS requestType,
+      r.cargo_desc      AS cargoDesc,
+      r.qty,
+      r.weight_kg       AS weightKg,
+      r.pickup_location   AS pickupLocation,
+      r.delivery_location AS deliveryLocation,
+      r.requested_at    AS requestedAt,
+      r.note
+    FROM logistics_agent.dispatch_requests r
+    WHERE r.status = 'PENDING'
+    ORDER BY r.requested_at
+  `);
+
+  // 매칭: 차량 현재 위치 ↔ 배차 요청 픽업 위치 공간 매칭
+  const extractRegion = (str) => {
+    if (!str) return "";
+    // "서울 금천구 공장" → "서울", "부산항 3부두" → "부산"
+    const m = str.match(/^(서울|부산|인천|경기|대구|광주|대전|울산|세종|강원|충북|충남|전북|전남|경북|경남|제주)/);
+    return m ? m[1] : str.split(" ")[0];
+  };
+
+  const matched = [];
+  const unmatched = [...pendingRequests];
+
+  for (const vehicle of deliveredVehicles) {
+    const vehicleRegion = extractRegion(vehicle.currentLocation);
+    const matchIdx = unmatched.findIndex(r =>
+      extractRegion(r.pickupLocation) === vehicleRegion &&
+      (vehicle.capacityKg >= (r.weightKg ?? 0))
+    );
+    if (matchIdx !== -1) {
+      const [request] = unmatched.splice(matchIdx, 1);
+      matched.push({
+        vehicle,
+        request,
+        matchReason: `차량 현위치(${vehicleRegion}) = 화물 픽업지(${extractRegion(request.pickupLocation)})`,
+        returnRoute: `${vehicle.currentLocation} → ${request.deliveryLocation}`,
+      });
+    }
+  }
+
+  res.json({
+    matched,
+    unmatchedVehicles: deliveredVehicles.filter(v =>
+      !matched.find(m => m.vehicle.vehicleId === v.vehicleId)
+    ),
+    unmatchedRequests: unmatched,
+    summary: {
+      totalDelivered: deliveredVehicles.length,
+      totalPending:   pendingRequests.length,
+      matchedCount:   matched.length,
+    },
+  });
+});
+
 export default router;

@@ -23,3 +23,7 @@ Thumbs.db
 # 로그
 *.log
 npm-debug.log*
+
+# 기획/내부 문서
+기획.txt
+시연 사진/

@@ -84,6 +84,53 @@ router.get("/completions", async (req, res) => {
   res.json(rows);
 });
 
+// 생산기업 B/L → 물류 배차 요청 중계 (도메인 분리 핵심 엔드포인트)
+router.post("/dispatch-request", async (req, res) => {
+  const { requestType, cargoDesc, qty, weightKg, pickupLocation, deliveryLocation, emReceiptId } = req.body;
+  const ts = now();
+
+  await pool.execute(
+    `INSERT IGNORE INTO logistics_agent.dispatch_requests
+       (request_type, cargo_desc, qty, weight_kg, pickup_location, delivery_location, status, requested_at, em_receipt_id)
+     VALUES (?,?,?,?,?,?,'PENDING',?,?)`,
+    [requestType, cargoDesc, qty ?? null, weightKg ?? null,
+     pickupLocation, deliveryLocation ?? null, ts, emReceiptId ?? null]
+  );
+
+  await pool.execute(
+    `INSERT INTO platform_agent.platform_logs (company_type, event_type, message, logged_at)
+     VALUES ('PRODUCTION','IMPORT_DISPATCH_RELAYED',?,?)`,
+    [`[B/L 수입] ${cargoDesc} ${qty}개 배차 요청 중계 → 물류`, ts]
+  );
+
+  res.status(201).json({ ok: true });
+});
+
+// 생산기업 도착지 변경 → 물류 배차요청 + 플랫폼 completions 동기화
+router.post("/sync-destination", async (req, res) => {
+  const { orderId, deliveryAddress } = req.body;
+  if (!orderId || !deliveryAddress) return res.status(400).json({ error: "orderId, deliveryAddress 필수" });
+
+  await Promise.all([
+    pool.execute(
+      "UPDATE logistics_agent.dispatch_requests SET delivery_location = ? WHERE em_order_id = ?",
+      [deliveryAddress, orderId]
+    ),
+    pool.execute(
+      "UPDATE platform_agent.production_completions SET delivery_address = ? WHERE order_id = ?",
+      [deliveryAddress, orderId]
+    ),
+  ]);
+
+  await pool.execute(
+    `INSERT INTO platform_agent.platform_logs (company_type, event_type, message, logged_at)
+     VALUES ('PRODUCTION','DESTINATION_UPDATED',?,?)`,
+    [`도착지 업데이트: [${orderId}] → ${deliveryAddress}`, new Date().toISOString().slice(0,19).replace("T"," ")]
+  );
+
+  res.json({ ok: true });
+});
+
 // 귀로 플랜: 인바운드(수입 배송 중) + 아웃바운드(출고 대기) 연결 뷰
 router.get("/return-plan", async (req, res) => {
   // 수입 배송 중인 차량 (부산→서울 방향)

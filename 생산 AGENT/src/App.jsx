@@ -2899,6 +2899,13 @@ ${firstProcessSummary}
     ordersApi.update(orderId, { dueDate }).catch(() => {});
   };
 
+  const handleDeliveryDestinationChange = (orderId, deliveryDestination) => {
+    setOrders((current) =>
+      current.map((item) => item.id === orderId ? { ...item, deliveryDestination } : item),
+    );
+    ordersApi.update(orderId, { deliveryDestination }).catch(() => {});
+  };
+
   const handleOrderFormChange = (key, value) => {
     setOrderForm((current) => {
       return {
@@ -3486,6 +3493,7 @@ ${firstProcessSummary}
                           <th className="px-4 py-3 text-center">납기</th>
                           <th className="px-4 py-3 text-right">수량</th>
                           <th className="px-4 py-3 text-center">상태</th>
+                          <th className="px-4 py-3 text-center">도착지</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800/50">
@@ -3601,12 +3609,35 @@ ${firstProcessSummary}
                                 ))}
                               </select>
                             </td>
+                            <td className="px-4 py-3 text-center">
+                              {["DONE","READY_TO_SHIP","CANCELLED"].includes(order.status) ? (
+                                <select
+                                  value={order.deliveryDestination ?? "미정"}
+                                  className={`rounded border px-2 py-1 text-[10px] outline-none ${
+                                    order.deliveryDestination === "부산항" ? "border-blue-600  bg-blue-900/40  text-blue-300" :
+                                    order.deliveryDestination === "인천항" ? "border-teal-600  bg-teal-900/40  text-teal-300" :
+                                    "border-slate-700 bg-slate-900 text-slate-400"
+                                  }`}
+                                  onClick={(e) => e.stopPropagation()}
+                                  onChange={(e) => {
+                                    e.stopPropagation();
+                                    handleDeliveryDestinationChange(order.id, e.target.value);
+                                  }}
+                                >
+                                  <option value="미정">미정</option>
+                                  <option value="인천항">인천항</option>
+                                  <option value="부산항">부산항</option>
+                                </select>
+                              ) : (
+                                <span className="text-slate-700">—</span>
+                              )}
+                            </td>
                           </tr>
                         ))}
                         {filteredProductionOrders.length === 0 && (
                           <tr>
                             <td
-                              colSpan={8}
+                              colSpan={9}
                               className="px-4 py-10 text-center text-[10px] text-slate-500"
                             >
                               선택한 기간에 해당하는 수주가 없습니다.

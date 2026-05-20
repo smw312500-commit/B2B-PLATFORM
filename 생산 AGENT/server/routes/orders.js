@@ -13,7 +13,8 @@ const ORDER_SELECT = `
          product_type AS productType, quantity, job_type AS jobType,
          cutting, priority, status,
          DATE_FORMAT(due_date, '%Y-%m-%d') AS dueDate,
-         created_at AS createdAt, completed_at AS completedAt
+         created_at AS createdAt, completed_at AS completedAt,
+         delivery_destination AS deliveryDestination
   FROM orders`;
 
 router.get("/", async (req, res) => {
@@ -37,11 +38,11 @@ router.post("/", async (req, res) => {
 });
 
 router.patch("/:id", async (req, res) => {
-  const allowed = ["status", "priority", "jobType", "cutting", "dueDate", "quantity"];
+  const allowed = ["status", "priority", "jobType", "cutting", "dueDate", "quantity", "deliveryDestination"];
   const colMap  = {
     status: "status", priority: "priority", jobType: "job_type",
     cutting: "cutting", dueDate: "due_date", quantity: "quantity",
-    completedAt: "completed_at",
+    completedAt: "completed_at", deliveryDestination: "delivery_destination",
   };
   const updates = {};
   allowed.forEach(k => { if (req.body[k] !== undefined) updates[k] = req.body[k]; });
@@ -57,11 +58,14 @@ router.patch("/:id", async (req, res) => {
   // READY_TO_SHIP → 플랫폼에 출고 준비 알림 (플랫폼이 물류 배차 대행)
   if (updates.status === "READY_TO_SHIP") {
     const [rows] = await pool.execute(
-      "SELECT id, order_number, customer_name, product_type, quantity FROM orders WHERE id = ?",
+      "SELECT id, order_number, customer_name, product_type, quantity, delivery_destination FROM orders WHERE id = ?",
       [req.params.id]
     );
     if (rows.length) {
       const o = rows[0];
+      const dest = o.delivery_destination && o.delivery_destination !== "미정"
+        ? o.delivery_destination
+        : null;
       fetch(`${PLATFORM_URL}/api/notify/ready`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -73,10 +77,31 @@ router.patch("/:id", async (req, res) => {
           quantity:        o.quantity,
           customerName:    o.customer_name,
           pickupAddress:   FACTORY_ADDRESS,
-          deliveryAddress: null,
+          deliveryAddress: dest ? `${dest} ${o.customer_name} 납품처` : null,
         }),
       }).catch(err => console.warn("[플랫폼 알림 실패]", err.message));
       // 플랫폼 호출은 fire-and-forget — 실패해도 수주 업데이트는 성공
+    }
+  }
+
+  // 도착지 변경 → READY_TO_SHIP 수주면 물류/플랫폼 자동 업데이트
+  if (updates.deliveryDestination) {
+    const [rows] = await pool.execute(
+      "SELECT id, order_number, customer_name, product_type, quantity, status, delivery_destination FROM orders WHERE id = ?",
+      [req.params.id]
+    );
+    if (rows.length && rows[0].status === "READY_TO_SHIP") {
+      const o = rows[0];
+      const dest = o.delivery_destination && o.delivery_destination !== "미정"
+        ? o.delivery_destination : null;
+      if (dest) {
+        const deliveryAddress = `${dest} ${o.customer_name} 납품처`;
+        fetch(`${PLATFORM_URL}/api/notify/sync-destination`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orderId: o.id, deliveryAddress }),
+        }).catch(err => console.warn("[도착지 동기화 실패]", err.message));
+      }
     }
   }
 
